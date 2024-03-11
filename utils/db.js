@@ -2,50 +2,49 @@ const { MongoClient } = require('mongodb');
 
 class DBClient {
   constructor () {
-    const host = process.env.DB_HOST || 'localhost';
-    const port = process.env.DB_PORT || 27017;
-    const database = process.env.DB_DATABASE || 'files_manager';
-    const url = `mongodb://${host}:${port}:${database}`;
-    this.client = new MongoClient(url);
+    this.host = process.env.DB_HOST || 'localhost';
+    this.port = process.env.DB_PORT || 27017;
+    this.database = process.env.DB_DATABASE || 'files_manager';
+    this.client = null;
+    this.isConnected = false;
   }
 
-  async isAlive () {
+  async connect () {
+    const url = `mongodb://${this.host}:${this.port}/${this.database}`;
     try {
-      await this.client.connect();
-      return true;
-    } catch (error) {
-      console.error('MongoDB connection error:', error);
-      return false;
+      this.client = await MongoClient.connect(url, { useNewUrlParser: true, useUnifiedTopology: true });
+      this.isConnected = true;
+      console.log('Connected to MongoDB');
+    } catch (err) {
+      console.error('Error connecting to MongoDB', err);
+      this.isConnected = false;
     }
+  }
+
+  isAlive () {
+    return this.isConnected;
   }
 
   async nbUsers () {
-    try {
-      await this.client.connect();
-      const db = this.client.db();
-      const usersCollection = db.collection('users');
-      const count = await usersCollection.countDocuments();
-      return count;
-    } catch (error) {
-      console.error('MongoDB error:', error);
-      return -1;
+    if (!this.isConnected) {
+      throw new Error('Not connected to MongoDB');
     }
+    const db = this.client.db(this.database);
+    const collection = db.collection('users');
+    const count = await collection.countDocuments({});
+    return count;
   }
 
   async nbFiles () {
-    try {
-      await this.client.connect();
-      const db = this.client.db();
-      const filesCollection = db.collection('files');
-      const count = await filesCollection.countDocuments();
-      return count;
-    } catch (error) {
-      console.error('MongoDB error:', error);
-      return -1;
+    if (!this.isConnected) {
+      throw new Error('Not connected to MongoDB');
     }
+    const db = this.client.db(this.database);
+    const collection = db.collection('files');
+    const count = await collection.countDocuments({});
+    return count;
   }
 }
 
 const dbClient = new DBClient();
-
 module.exports = dbClient;
