@@ -1,23 +1,39 @@
-const { countUsers, countFiles } = require('../utils');
+import sha1 from 'sha1';
+import Queue from 'bull/lib/queue';
+import dbClient from '../utils/db';
 
-const AppController = {
-  getStatus: (req, res) => {
-    const redisAlive = true;
-    const dbAlive = true;
+const userQueue = new Queue('email sending');
 
-    res.status(200).json({ redis: redisAlive, db: dbAlive });
-  },
+export default class UsersController {
+  static async postNew (req, res) {
+    const email = req.body ? req.body.email : null;
+    const password = req.body ? req.body.password : null;
 
-  getStats: async (req, res) => {
-    try {
-      const usersCount = await countUsers();
-      const filesCount = await countFiles();
-
-      res.status(200).json({ users: usersCount, files: filesCount });
-    } catch (error) {
-      res.status(500).json({ error: 'Internal Server Error' });
+    if (!email) {
+      res.status(400).json({ error: 'Missing email' });
+      return;
     }
-  }
-};
+    if (!password) {
+      res.status(400).json({ error: 'Missing password' });
+      return;
+    }
+    const user = await (await dbClient.usersCollection()).findOne({ email });
 
-module.exports = AppController;
+    if (user) {
+      res.status(400).json({ error: 'Already exist' });
+      return;
+    }
+    const insertionInfo = await (await dbClient.usersCollection())
+      .insertOne({ email, password: sha1(password) });
+    const userId = insertionInfo.insertedId.toString();
+
+    userQueue.add({ userId });
+    res.status(201).json({ email, id: userId });
+  }
+
+  static async getMe (req, res) {
+    const { user } = req;
+
+    res.status(200).json({ email: user.email, id: user._id.toString() });
+  }
+}
